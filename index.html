@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Attendance Tracking Web App</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #18181b; color: #f1f1f1; transition: background 0.4s, color 0.4s; }
+    .container { max-width: 400px; margin: 2rem auto; background: #222; border-radius: 12px; padding: 2rem; box-shadow: 0 8px 32px #0ff3 0px 0px 24px; position: relative; }
+    h2 { margin-top: 0; font-weight: 700; color: #0ff; text-shadow: 0 0 4px #0ff3;}
+    label { display: block; margin: 1rem 0 0.25rem; }
+    input, select { width: 100%; padding: 0.5rem; border-radius: 5px; border: none; margin-bottom: 1rem; background: #292929; color: #fff; font-size: 1rem; outline: none; box-shadow: 0 0 4px #0ff3; transition: background 0.3s;}
+    .btn { width: 100%; padding: 0.75rem; border-radius: 8px; border: none; font-size: 1rem; font-weight: bold; cursor: pointer; margin: 0.5rem 0; background: linear-gradient(90deg,#0ff,#00f7,#0ff); color: #111; box-shadow: 0 0 8px #0ff9; position: relative; overflow: hidden; transition: background 0.3s, color 0.3s; outline: none;}
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(1.2); background: #222; color: #0ff; border-radius: 12px; padding: 2rem; font-size: 1.2rem; box-shadow: 0 0 30px #0ff6; z-index: 1000; text-align: center; animation: hackerPopup .7s cubic-bezier(.55,1.4,.37,.75); font-family: 'Fira Mono', 'Consolas', monospace;}
+    @keyframes hackerPopup { 0% { opacity: 0; transform: scale(0.5);} 70% { opacity: 1; transform: scale(1.2);} 100% { opacity: 1; transform: scale(1);} }
+    .loading-anim { display: inline-block; width: 1.2em; height: 1.2em; border-radius: 50%; border: 4px solid #0ff; border-top-color: #00f7; animation: spin 1s linear infinite; vertical-align: middle; margin-right: .5em;}
+    @keyframes spin { to { transform: rotate(360deg);} }
+    .dashboard { display: none;}
+    .student-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;}
+    .present { color: #0f0; font-weight: bold;}
+    .absent { color: #f00; font-weight: bold;}
+    .filter-row { display: flex; gap: 0.5rem; margin: 1rem 0;}
+    .attendance-row { border-bottom: 1px solid #333; padding: 0.5rem 0;}
+    @media (max-width:480px) {.container{max-width:96vw; padding:1rem;} }
+  </style>
+</head>
+<body>
+  <div class="container" id="auth-container">
+    <!-- Sign Up -->
+    <div id="signup-form" style="display:none">
+      <h2>Sign Up</h2>
+      <div style="margin-bottom:1rem; background:#232; color:#0f0; padding:0.5rem; border-radius:7px;">
+        <b>Important:</b> Before signing up, open your Google Sheet, click "Share", and add the email below as Editor.<br>
+        <span id="script-email" style="font-family:monospace; color:#0ff;"></span>
+      </div>
+      <label>Email</label>
+      <input type="email" id="su-email" required autocomplete="username">
+      <label>Department</label>
+      <select id="su-dept">
+        <option value="CSE">CSE</option>
+        <option value="Civil">Civil</option>
+        <option value="Electrical">Electrical</option>
+      </select>
+      <label>Semester</label>
+      <select id="su-semester">
+        <option>1st</option><option>2nd</option><option>3rd</option>
+        <option>4th</option><option>5th</option><option>6th</option>
+      </select>
+      <label>Google Sheet ID</label>
+      <input type="text" id="su-sheetid" placeholder="Paste Google Sheet ID">
+      <label>Create Password</label>
+      <input type="password" id="su-password" required>
+      <label>Confirm Password</label>
+      <input type="password" id="su-confirm" required>
+      <button class="btn" id="btn-signup" onclick="signUp()">Sign Up Now</button>
+      <div style="margin-top:1rem;"><a href="#" onclick="showLogin()">Already have an account?</a></div>
+    </div>
+    <!-- Login -->
+    <div id="login-form" style="display:block">
+      <h2>Attendance Login Portal</h2>
+      <label>Email</label>
+      <input type="email" id="li-email" required autocomplete="username">
+      <label>Password</label>
+      <input type="password" id="li-password" required autocomplete="current-password">
+      <button class="btn" id="btn-login" onclick="login()">Login</button>
+      <div style="margin-top:1rem;"><a href="#" onclick="showSignup()">New? Sign Up</a> | <a href="#" onclick="showForgot()">Forgot Password?</a></div>
+    </div>
+    <!-- Forgot Password -->
+    <div id="forgot-form" style="display:none">
+      <h2>Forgot Password</h2>
+      <div id="fp-step1">
+        <label>Email</label>
+        <input type="email" id="fp-email" required>
+        <button class="btn" id="btn-sendtoken" onclick="sendResetToken()">Send Reset Link</button>
+      </div>
+      <div id="fp-step2" style="display:none">
+        <label>Email</label>
+        <input type="email" id="fp-email2" required>
+        <label>Token</label>
+        <input type="text" id="fp-token" required>
+        <label>New Password</label>
+        <input type="password" id="fp-newpass" required>
+        <button class="btn" id="btn-resetpass" onclick="resetPassword()">Reset Password</button>
+      </div>
+      <div style="margin-top:1rem;"><a href="#" onclick="showLogin()">Back to Login</a></div>
+    </div>
+  </div>
+  <!-- Dashboard -->
+  <div class="container dashboard" id="dashboard-container">
+    <h2 id="dash-header"></h2>
+    <div style="margin-bottom:1rem;">
+      <button class="btn" onclick="editStudents()" id="btn-editstudents">Edit Students</button>
+      <button class="btn" onclick="markAttendance()" id="btn-markattend">Mark Attendance</button>
+    </div>
+    <div id="students-list"></div>
+    <div id="attendance-section" style="display:none;">
+      <h3>Mark Attendance (<span id="att-date"></span>)</h3>
+      <div id="attendance-list"></div>
+      <button class="btn" id="btn-saveattend" onclick="saveAttendance()">Save Attendance</button>
+    </div>
+    <div class="filter-row">
+      <input type="text" id="search-enroll" placeholder="Search Enrollment">
+      <select id="filter-status">
+        <option value="All">All</option>
+        <option value="Present">Present</option>
+        <option value="Absent">Absent</option>
+      </select>
+      <button class="btn" onclick="filterAttendance()">Search</button>
+    </div>
+    <div id="attendance-results"></div>
+    <button class="btn" onclick="logout()" style="margin-top:1rem;">Logout</button>
+  </div>
+  <!-- Popup -->
+  <div id="popup" style="display:none"></div>
+  <script>
+    // Get script owner email for display
+    function getScriptEmail() {
+      google.script.run.withSuccessHandler(function(email){
+        document.getElementById('script-email').innerText = email;
+      }).getScriptOwnerEmail();
+    }
+    getScriptEmail(); // Show on signup screen
+
+    let currentUser = null, students = [], attendance = [], attendanceStatus = {}, attendanceDate = '';
+    function showPopup(msg, color="#0ff", timeout=1800) {
+      let popup = document.getElementById('popup');
+      popup.innerHTML = '<div class="popup" style="color:'+color+'">'+msg+'</div>';
+      popup.style.display = 'block';
+      setTimeout(()=>{popup.style.display='none';}, timeout);
+    }
+    function showSignup() {
+      document.getElementById('signup-form').style.display = 'block';
+      document.getElementById('login-form').style.display = 'none';
+      document.getElementById('forgot-form').style.display = 'none';
+    }
+    function showLogin() {
+      document.getElementById('signup-form').style.display = 'none';
+      document.getElementById('login-form').style.display = 'block';
+      document.getElementById('forgot-form').style.display = 'none';
+    }
+    function showForgot() {
+      document.getElementById('signup-form').style.display = 'none';
+      document.getElementById('login-form').style.display = 'none';
+      document.getElementById('forgot-form').style.display = 'block';
+      document.getElementById('fp-step1').style.display='block';
+      document.getElementById('fp-step2').style.display='none';
+    }
+    function signUp() {
+      let btn = document.getElementById('btn-signup');
+      btn.disabled = true; btn.innerHTML = '<span class="loading-anim"></span>Signing Up...';
+      let email = document.getElementById('su-email').value;
+      let dept = document.getElementById('su-dept').value;
+      let sem = document.getElementById('su-semester').value;
+      let sheetid = document.getElementById('su-sheetid').value;
+      let pass = document.getElementById('su-password').value;
+      let confirm = document.getElementById('su-confirm').value;
+      if (!email || !dept || !sem || !sheetid || !pass || pass!==confirm) {
+        showPopup('Fill all fields, passwords must match!', '#f00'); btn.disabled=false; btn.innerHTML='Sign Up Now'; return;
+      }
+      google.script.run.withSuccessHandler(function(res){
+        btn.disabled=false; btn.innerHTML='Sign Up Now';
+        if (res.success) {
+          showPopup('✅ Account Created Successfully!', '#0f0');
+          setTimeout(showLogin,1500);
+        } else showPopup(res.message||'Signup failed','#f00');
+      }).signup(email,dept,sem,sheetid,pass);
+    }
+    function login() {
+      let btn = document.getElementById('btn-login');
+      btn.disabled = true; btn.innerHTML = '<span class="loading-anim"></span>Loading...';
+      let email = document.getElementById('li-email').value;
+      let pass = document.getElementById('li-password').value;
+      google.script.run.withSuccessHandler(function(res){
+        btn.disabled=false; btn.innerHTML='Login';
+        if (res.success) {
+          showPopup('💻 Login Successful', '#0ff');
+          currentUser = res; loadDashboard();
+        } else showPopup('🚨 Unauthorized Access Detected', '#f00');
+      }).login(email,pass);
+    }
+    function sendResetToken() {
+      let btn = document.getElementById('btn-sendtoken');
+      btn.disabled=true; btn.innerHTML='<span class="loading-anim"></span>Sending reset link...';
+      let email = document.getElementById('fp-email').value;
+      google.script.run.withSuccessHandler(function(res){
+        btn.disabled=false; btn.innerHTML='Send Reset Link';
+        if (res.success) {
+          showPopup('📧 Reset token sent to email','#0ff');
+          document.getElementById('fp-step1').style.display='none';
+          document.getElementById('fp-step2').style.display='block';
+        } else showPopup(res.message||'Failed','#f00');
+      }).sendResetToken(email);
+    }
+    function resetPassword() {
+      let btn = document.getElementById('btn-resetpass');
+      btn.disabled=true; btn.innerHTML='<span class="loading-anim"></span>Resetting...';
+      let email = document.getElementById('fp-email2').value;
+      let token = document.getElementById('fp-token').value;
+      let newpass = document.getElementById('fp-newpass').value;
+      google.script.run.withSuccessHandler(function(res){
+        btn.disabled=false; btn.innerHTML='Reset Password';
+        if (res.success) {
+          showPopup('✅ Password Reset Successfully','#0f0');
+          setTimeout(showLogin,1500);
+        } else showPopup(res.message||'Failed','#f00');
+      }).resetPassword(email,token,newpass);
+    }
+    function loadDashboard() {
+      document.getElementById('auth-container').style.display = 'none';
+      document.getElementById('dashboard-container').style.display = 'block';
+      document.getElementById('dash-header').innerText = currentUser.dept + " - " + currentUser.semester;
+      loadStudents();
+      loadAttendanceResults();
+    }
+    function logout() {
+      currentUser = null; students=[]; attendance=[]; attendanceStatus={};
+      document.getElementById('dashboard-container').style.display = 'none';
+      document.getElementById('auth-container').style.display = 'block';
+      showLogin();
+    }
+    function loadStudents() {
+      google.script.run.withSuccessHandler(function(stu){
+        students = stu || [];
+        renderStudents();
+      }).getStudents(currentUser.email);
+    }
+    function renderStudents() {
+      let el = document.getElementById('students-list');
+      if (!students.length) { el.innerHTML='<p>No students. Click "Edit Students" to add.</p>'; return;}
+      el.innerHTML = '<h3>Students</h3>' + students.map((s,i)=>`
+        <div class="student-row">
+          <span>${s.enroll}</span> - <span>${s.name}</span>
+        </div>
+      `).join('');
+    }
+    function editStudents() {
+      let btn = document.getElementById('btn-editstudents');
+      btn.disabled=true; btn.innerHTML='<span class="loading-anim"></span>Editing...';
+      let el = document.getElementById('students-list');
+      el.innerHTML = '<h3>Edit Students</h3>' + students.map((s,i)=>`
+        <div class="student-row">
+          <input type="text" value="${s.enroll}" id="stu-enroll-${i}" style="width:25%">
+          <input type="text" value="${s.name}" id="stu-name-${i}" style="width:45%">
+          <button class="btn" onclick="removeStudent(${i})" style="width:20%">Remove</button>
+        </div>
+      `).join('') + 
+      '<button class="btn" onclick="addStudentRow()">+ Add Student</button><button class="btn" onclick="saveStudentsUI()">Save Students</button>';
+      btn.disabled=false; btn.innerHTML='Edit Students';
+    }
+    function addStudentRow() {
+      students.push({enroll:"",name:""});
+      editStudents();
+    }
+    function removeStudent(idx) {
+      students.splice(idx,1); editStudents();
+    }
+    function saveStudentsUI() {
+      let btns = document.querySelectorAll('#students-list .btn');
+      btns.forEach(b=>b.disabled=true);
+      let updated = [];
+      for (let i=0;i<students.length;i++) {
+        let enroll = document.getElementById('stu-enroll-'+i).value.trim();
+        let name = document.getElementById('stu-name-'+i).value.trim();
+        if (enroll && name) updated.push({enroll,name});
+      }
+      google.script.run.withSuccessHandler(function(res){
+        if (res.success) {
+          students = updated;
+          showPopup('✅ Students Saved','#0f0');
+          renderStudents();
+        } else showPopup('Failed to save','#f00');
+      }).saveStudents(currentUser.email,updated);
+    }
+    function markAttendance() {
+      attendanceDate = new Date().toISOString().slice(0,10);
+      document.getElementById('attendance-section').style.display='block';
+      document.getElementById('att-date').innerText=attendanceDate;
+      attendanceStatus = {};
+      let list = document.getElementById('attendance-list');
+      list.innerHTML = students.map((s,i)=>`
+        <div class="student-row">
+          <span>${s.enroll}</span>
+          <span>${s.name}</span>
+          <button class="btn" onclick="toggleStatus('${s.enroll}')" id="att-btn-${s.enroll}">Absent</button>
+        </div>
+      `).join('');
+    }
+    function toggleStatus(enroll) {
+      if (!attendanceStatus[enroll] || attendanceStatus[enroll]=="Absent") {
+        attendanceStatus[enroll] = "Present";
+        document.getElementById('att-btn-'+enroll).innerText='Present';
+        document.getElementById('att-btn-'+enroll).style.background='linear-gradient(90deg,#0f0,#0ff)';
+      } else {
+        attendanceStatus[enroll] = "Absent";
+        document.getElementById('att-btn-'+enroll).innerText='Absent';
+        document.getElementById('att-btn-'+enroll).style.background='linear-gradient(90deg,#f00,#0ff)';
+      }
+    }
+    function saveAttendance() {
+      if (!confirm('Are you sure you want to save attendance for today?')) return;
+      let btn = document.getElementById('btn-saveattend');
+      btn.disabled=true; btn.innerHTML='<span class="loading-anim"></span>Saving...';
+      let attData = students.map(s=>({
+        enroll: s.enroll,
+        name: s.name,
+        status: attendanceStatus[s.enroll]||"Absent"
+      }));
+      google.script.run.withSuccessHandler(function(res){
+        btn.disabled=false; btn.innerHTML='Save Attendance';
+        if (res.success) {
+          showPopup('✅ Attendance Saved','#0f0');
+          document.getElementById('attendance-section').style.display='none';
+          loadAttendanceResults();
+        } else showPopup(res.message||'Failed','#f00');
+      }).saveAttendance(currentUser.email,{date:attendanceDate,students:attData});
+    }
+    function loadAttendanceResults() {
+      let filter = {
+        status: document.getElementById('filter-status').value,
+        search: document.getElementById('search-enroll').value.trim()
+      };
+      google.script.run.withSuccessHandler(function(res){
+        attendance = res || [];
+        renderAttendanceResults();
+      }).getAttendance(currentUser.email,filter);
+    }
+    function filterAttendance() { loadAttendanceResults(); }
+    function renderAttendanceResults() {
+      let el = document.getElementById('attendance-results');
+      if (!attendance.length) { el.innerHTML='<p>No records found.</p>'; return;}
+      el.innerHTML = attendance.map(r=>`
+        <div class="attendance-row">
+          <span>${r.Date}</span> | <span>${r.Department}</span> | <span>${r.Semester}</span>
+          | <span>${r.Enroll}</span> <span>${r.Name}</span>
+          | <span class="${r.Status==='Present'?'present':'absent'}">${r.Status}</span>
+        </div>
+      `).join('');
+    }
+    showLogin();
+  </script>
+</body>
+</html>
